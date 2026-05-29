@@ -1214,7 +1214,19 @@ function initMobileSidebar() {
     sidebarLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('href');
+            
+            // Check if it's an external URL or hash link
             if (targetId && targetId !== '#') {
+                // If it's an external URL (starts with http:// or https://)
+                if (targetId.startsWith('http://') || targetId.startsWith('https://')) {
+                    // Close sidebar first
+                    closeSidebar();
+                    // Open in new tab
+                    window.location.href = targetId;  // Opens in same tab
+                    return; // Exit early
+                }
+                
+                // Otherwise, treat as internal hash link
                 e.preventDefault();
                 closeSidebar();
                 const targetElement = document.querySelector(targetId);
