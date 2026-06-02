@@ -27,6 +27,9 @@ let fixedRound32Qualifiers = [];
 // Track which matches have legit results from API (protected)
 let legitMatchResults = new Set();
 
+// Flag to track if we're using real data or simulation mode
+let usingRealData = false;
+
 function parseMatchDate(dateString) {
     if (!dateString) return null;
     const parsed = new Date(dateString);
@@ -50,6 +53,9 @@ async function fetchJSON(file) {
 async function initializeWebsite() {
     console.log("Loading World Cup 2026 data...");
     
+    // Show loading indicator in bracket
+    showBracketLoading();
+    
     [
         teamsData,
         matchesData,
@@ -62,14 +68,19 @@ async function initializeWebsite() {
         fetchJSON("football.stadiums.json")
     ]);
     
-    console.log(`Loaded: ${teamsData.length} teams, ${matchesData.length} matches`);
+    console.log(`Loaded: ${teamsData.length} teams, ${matchesData.length} matches, ${groupsData.length} groups`);
     
     normalizeMatches();
     getTodayMatches();
     createFlagMarquee();
     renderHeroMatch();
     renderCalendar();
-    renderGroupsDefault();
+    
+    // Use API data if available, otherwise fallback to default
+    if (!renderGroupsFromAPI()) {
+        renderGroupsDefault();
+    }
+    
     renderStadiums();
     initKnockoutBracket();
     hidePreloader();
@@ -77,10 +88,64 @@ async function initializeWebsite() {
     initMobileSidebar();
     addFilterButtonToCalendar();
     
-    // Auto-sync with API every 30 seconds
+    // Auto-sync with API every 30 seconds (only if we have real data)
     setInterval(() => {
-        syncBracketWithAPIMatches();
+        if (usingRealData) {
+            refreshAllData();
+        }
     }, 30000);
+}
+
+function showBracketLoading() {
+    const container = document.getElementById('knockout-bracket');
+    if (container) {
+        container.innerHTML = `
+            <div class="bracket-empty-message">
+                <p>Click "Simulate Random Results" to generate a tournament bracket, or wait for real FIFA data.</p>
+                <p class="small-text">Real data will automatically override simulated results when available.</p>
+            </div>
+        `;
+    }
+}
+
+async function refreshAllData() {
+    console.log("Refreshing data...");
+    
+    const freshGroups = await fetchJSON("football.matchtables.json");
+    if (freshGroups && freshGroups.length > 0 && JSON.stringify(freshGroups) !== JSON.stringify(groupsData)) {
+        groupsData = freshGroups;
+        renderGroupsFromAPI();
+        
+        // If we have real data, rebuild bracket with it
+        if (hasRealGroupStandings()) {
+            usingRealData = true;
+            buildFixedRound32FromAPI();
+        }
+        renderKnockoutBracket();
+    }
+    
+    const freshMatches = await fetchJSON("football.matches.json");
+    if (freshMatches && freshMatches.length > 0) {
+        matchesData = freshMatches;
+        normalizeMatches();
+        refreshCalendar();
+        syncBracketWithAPIMatches();
+    }
+}
+
+function hasRealGroupStandings() {
+    if (!groupsData || groupsData.length === 0) return false;
+    
+    for (const group of groupsData) {
+        if (group.teams && group.teams.length > 0) {
+            for (const team of group.teams) {
+                if ((team.pts && team.pts > 0) || (team.mp && team.mp > 0)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 function hidePreloader() {
@@ -179,6 +244,89 @@ function createFlagMarquee() {
     }
 }
 
+// Render groups from API matchtables data
+function renderGroupsFromAPI() {
+    const container = document.getElementById("groups-container");
+    if (!container) return false;
+    
+    if (!groupsData || groupsData.length === 0) {
+        return false;
+    }
+    
+    let html = '';
+    
+    groupsData.forEach(groupTable => {
+        const groupName = groupTable.group || groupTable.name;
+        const teams = groupTable.teams || [];
+        
+        if (teams.length === 0) return;
+        
+        const sortedTeams = [...teams].sort((a, b) => {
+            if (a.pts !== b.pts) return b.pts - a.pts;
+            if (a.gd !== b.gd) return b.gd - a.gd;
+            return b.gf - a.gf;
+        });
+        
+        html += `
+            <div class="group-card">
+                <h3>Group ${groupName}</h3>
+                <div class="group-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Team</th>
+                                <th>P</th>
+                                <th>W</th>
+                                <th>D</th>
+                                <th>L</th>
+                                <th>GF</th>
+                                <th>GA</th>
+                                <th>GD</th>
+                                <th>Pts</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        sortedTeams.forEach((team, index) => {
+            const teamInfo = getTeamById(team.team_id);
+            const flag = teamInfo ? getFlag(teamInfo.id) : 'https://flagcdn.com/w320/un.png';
+            const teamName = teamInfo ? teamInfo.name_en : team.team_id;
+            
+            let rowClass = '';
+            if (index === 0) rowClass = 'group-winner';
+            else if (index === 1) rowClass = 'group-runnerup';
+            
+            html += `
+                <tr class="${rowClass}">
+                    <td class="team-cell">
+                        <img src="${flag}" onerror="this.src='https://flagcdn.com/w320/un.png'">
+                        <span class="team-name">${teamName}</span>
+                    </td>
+                    <td>${team.mp || 0}</td>
+                    <td>${team.w || 0}</td>
+                    <td>${team.d || 0}</td>
+                    <td>${team.l || 0}</td>
+                    <td>${team.gf || 0}</td>
+                    <td>${team.ga || 0}</td>
+                    <td>${team.gd || 0}</td>
+                    <td class="points-cell">${team.pts || 0}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+    return true;
+}
+
 function renderGroupsDefault() {
     const container = document.getElementById("groups-container");
     if (!container) return;
@@ -218,7 +366,7 @@ function renderGroupsDefault() {
             <div class="group-card">
                 <h3>Group ${groupLetter}</h3>
                 <div class="group-table">
-                    <table>
+                    </table>
                         <thead>
                             <tr>
                                 <th>Team</th>
@@ -241,16 +389,16 @@ function renderGroupsDefault() {
                     <td class="team-cell">
                         <img src="${team.flag}" onerror="this.src='https://flagcdn.com/w320/un.png'">
                         <span class="team-name">${team.name}</span>
-                     </td>
-                     <td>0</td>
-                     <td>0</td>
-                     <td>0</td>
-                     <td>0</td>
-                     <td>0</td>
-                     <td>0</td>
-                     <td>0</td>
+                    </td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>0</td>
+                    <td>0</td>
                     <td class="points-cell">0</td>
-                 </tr>
+                </tr>
             `;
         });
         
@@ -704,11 +852,31 @@ function renderStadiums() {
     `).join('');
 }
 
-// ============= SMART KNOCKOUT BRACKET - PROTECTS LEGIT RESULTS =============
+// ============= KNOCKOUT BRACKET - CAN SIMULATE WITHOUT REAL DATA =============
 function initKnockoutBracket() {
-    if (!teamsData.length) { setTimeout(initKnockoutBracket, 500); return; }
+    if (!teamsData.length) { 
+        setTimeout(initKnockoutBracket, 500); 
+        return;
+    }
     
-    buildFixedRound32FromAPI();
+    // Check if we have real group data
+    if (hasRealGroupStandings()) {
+        console.log("Real group data detected, using real data mode");
+        usingRealData = true;
+        buildFixedRound32FromAPI();
+    } else {
+        console.log("No real data. Simulation mode ready. Click 'Simulate Random Results' to generate bracket.");
+        usingRealData = false;
+        // Keep bracket empty until user simulates
+        knockoutState.round32 = [];
+        knockoutState.round16 = [];
+        knockoutState.quarterfinals = [];
+        knockoutState.semifinals = [];
+        knockoutState.thirdPlace = null;
+        knockoutState.final = null;
+        knockoutState.winner = null;
+    }
+    
     renderKnockoutBracket();
     
     document.getElementById('simulateKnockoutBtn')?.addEventListener('click', () => simulateOnlyUnplayedMatches());
@@ -720,25 +888,25 @@ function buildFixedRound32FromAPI() {
     
     const qualifiers = getQualifiersFromGroupData();
     
-    if (qualifiers.length >= 32) {
+    if (qualifiers.length >= 16) {
         console.log(`Found ${qualifiers.length} qualified teams from API`);
         fixedRound32Qualifiers = qualifiers.slice(0, 32);
+        
+        const round32Matches = createOfficialPairings(fixedRound32Qualifiers);
+        knockoutState.round32 = round32Matches;
+        knockoutState.round16 = [];
+        knockoutState.quarterfinals = [];
+        knockoutState.semifinals = [];
+        knockoutState.thirdPlace = null;
+        knockoutState.final = null;
+        knockoutState.winner = null;
+        
+        // Sync with API to protect legit results
+        syncBracketWithAPIMatches();
     } else {
-        console.log(`Only ${qualifiers.length} teams found, using all teams`);
-        fixedRound32Qualifiers = [...teamsData].slice(0, 32);
+        console.log(`Only ${qualifiers.length} qualifiers found. Need at least 16 for Round of 32.`);
+        knockoutState.round32 = [];
     }
-    
-    const round32Matches = createOfficialPairings(fixedRound32Qualifiers);
-    knockoutState.round32 = round32Matches;
-    knockoutState.round16 = [];
-    knockoutState.quarterfinals = [];
-    knockoutState.semifinals = [];
-    knockoutState.thirdPlace = null;
-    knockoutState.final = null;
-    knockoutState.winner = null;
-    
-    // Sync with API to protect legit results
-    syncBracketWithAPIMatches();
 }
 
 function getQualifiersFromGroupData() {
@@ -746,43 +914,29 @@ function getQualifiersFromGroupData() {
     
     if (groupsData && groupsData.length > 0) {
         groupsData.forEach(group => {
-            const groupName = group.name || group._id;
+            const groupName = group.group || group.name;
             if (!groupStandings[groupName]) {
                 groupStandings[groupName] = [];
             }
             if (group.teams) {
                 group.teams.forEach(team => {
+                    const hasRealData = (team.pts && team.pts > 0) || (team.mp && team.mp > 0);
                     groupStandings[groupName].push({
-                        id: team.id,
+                        id: team.team_id,
                         name: team.name_en || team.name,
-                        teamObj: getTeamById(team.id),
-                        played: team.played || 0,
-                        points: team.points || 0,
-                        gd: (team.gf || 0) - (team.ga || 0),
+                        teamObj: getTeamById(team.team_id),
+                        played: team.mp || 0,
+                        points: team.pts || 0,
+                        gd: team.gd || 0,
                         gf: team.gf || 0,
-                        ga: team.ga || 0
+                        ga: team.ga || 0,
+                        hasRealData: hasRealData
                     });
                 });
             }
         });
     } else {
-        teamsData.forEach(team => {
-            if (team.groups) {
-                if (!groupStandings[team.groups]) {
-                    groupStandings[team.groups] = [];
-                }
-                groupStandings[team.groups].push({
-                    id: team.id,
-                    name: team.name_en,
-                    teamObj: team,
-                    played: 0,
-                    points: 0,
-                    gd: 0,
-                    gf: 0,
-                    ga: 0
-                });
-            }
-        });
+        return []; // No data
     }
     
     for (const group in groupStandings) {
@@ -798,9 +952,15 @@ function getQualifiersFromGroupData() {
     const thirdPlacedTeams = [];
     
     for (const [groupName, teams] of Object.entries(groupStandings)) {
-        if (teams[0]) groupWinners.push({ ...teams[0], group: groupName, position: 1 });
-        if (teams[1]) groupRunnersUp.push({ ...teams[1], group: groupName, position: 2 });
-        if (teams[2]) thirdPlacedTeams.push({ ...teams[2], group: groupName, position: 3 });
+        if (teams[0] && teams[0].hasRealData) {
+            groupWinners.push({ ...teams[0], group: groupName, position: 1 });
+        }
+        if (teams[1] && teams[1].hasRealData) {
+            groupRunnersUp.push({ ...teams[1], group: groupName, position: 2 });
+        }
+        if (teams[2] && teams[2].hasRealData) {
+            thirdPlacedTeams.push({ ...teams[2], group: groupName, position: 3 });
+        }
     }
     
     const sortedThirdPlaced = thirdPlacedTeams.sort((a, b) => {
@@ -810,7 +970,6 @@ function getQualifiersFromGroupData() {
     });
     
     const bestThirdPlaced = sortedThirdPlaced.slice(0, 8);
-    
     const allQualifiers = [...groupWinners, ...groupRunnersUp, ...bestThirdPlaced];
     
     return allQualifiers.map(q => q.teamObj || getTeamById(q.id)).filter(t => t);
@@ -820,10 +979,16 @@ function createOfficialPairings(qualifiers) {
     const pairings = [];
     const shuffled = [...qualifiers];
     
+    // Fisher-Yates shuffle
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
     for (let i = 0; i < shuffled.length; i += 2) {
         if (shuffled[i] && shuffled[i + 1]) {
             pairings.push({
-                id: `R32_${pairings.length}`,
+                id: `R32_${pairings.length + 1}`,
                 home: shuffled[i],
                 away: shuffled[i + 1],
                 homeScore: 0,
@@ -838,21 +1003,22 @@ function createOfficialPairings(qualifiers) {
     return pairings.slice(0, 16);
 }
 
-// Sync bracket with API matches and protect legit results
 function syncBracketWithAPIMatches() {
     console.log("Syncing bracket with API match results...");
     
-    // Check for knockout matches in API
     const knockoutAPIMatches = matchesData.filter(m => 
-        m.type === 'knockout' || m.round === 'R32' || m.round === 'R16' || 
+        m.typeGame === 'knockout' || m.round === 'R32' || m.round === 'R16' || 
         m.round === 'QF' || m.round === 'SF' || m.round === 'FINAL' || m.round === '3rd'
     );
     
     knockoutAPIMatches.forEach(apiMatch => {
-        if (apiMatch.home_score !== undefined && apiMatch.away_score !== undefined) {
-            const matchId = `${apiMatch.home_team_id}_${apiMatch.away_team_id}`;
+        const homeScore = apiMatch.homeTeamScore ?? apiMatch.home_score;
+        const awayScore = apiMatch.visitingTeamScore ?? apiMatch.away_score;
+        
+        if (homeScore !== undefined && awayScore !== undefined && apiMatch.finished) {
+            const homeTeamId = apiMatch.homeTeam || apiMatch.home_team_id;
+            const awayTeamId = apiMatch.visitingTeam || apiMatch.away_team_id;
             
-            // Check all rounds for this match
             const allRounds = [
                 ...knockoutState.round32,
                 ...knockoutState.round16,
@@ -864,49 +1030,39 @@ function syncBracketWithAPIMatches() {
             if (knockoutState.thirdPlace) allRounds.push(knockoutState.thirdPlace);
             
             const existingMatch = allRounds.find(m => 
-                (m.home?.id == apiMatch.home_team_id && m.away?.id == apiMatch.away_team_id) ||
-                (m.home?.id == apiMatch.away_team_id && m.away?.id == apiMatch.home_team_id)
+                (m.home?.id == homeTeamId && m.away?.id == awayTeamId) ||
+                (m.home?.id == awayTeamId && m.away?.id == homeTeamId)
             );
             
             if (existingMatch && !existingMatch.isLegit) {
-                existingMatch.homeScore = apiMatch.home_score;
-                existingMatch.awayScore = apiMatch.away_score;
+                existingMatch.homeScore = homeScore;
+                existingMatch.awayScore = awayScore;
                 existingMatch.played = true;
                 existingMatch.isLegit = true;
-                existingMatch.winner = apiMatch.home_score > apiMatch.away_score ? existingMatch.home : existingMatch.away;
+                existingMatch.winner = homeScore > awayScore ? existingMatch.home : existingMatch.away;
                 
-                if (apiMatch.home_score === apiMatch.away_score && apiMatch.penalty_winner) {
-                    existingMatch.winner = apiMatch.penalty_winner == apiMatch.home_team_id ? existingMatch.home : existingMatch.away;
-                }
-                
-                legitMatchResults.add(matchId);
                 console.log(`Protected legit result: ${existingMatch.home?.name_en} vs ${existingMatch.away?.name_en}`);
             }
         }
     });
     
-    // Auto-advance based on legit results
     autoAdvanceFromLegitResults();
     renderKnockoutBracket();
 }
 
 function autoAdvanceFromLegitResults() {
-    // Advance Round of 32 to Round of 16
     if (knockoutState.round32.length > 0 && knockoutState.round32.every(m => m.played) && knockoutState.round16.length === 0) {
         knockoutState.round16 = advanceToNextRoundProtected(knockoutState.round32, 'R16');
     }
     
-    // Advance Round of 16 to Quarterfinals
     if (knockoutState.round16.length > 0 && knockoutState.round16.every(m => m.played) && knockoutState.quarterfinals.length === 0) {
         knockoutState.quarterfinals = advanceToNextRoundProtected(knockoutState.round16, 'QF');
     }
     
-    // Advance Quarterfinals to Semifinals
     if (knockoutState.quarterfinals.length > 0 && knockoutState.quarterfinals.every(m => m.played) && knockoutState.semifinals.length === 0) {
         knockoutState.semifinals = advanceToNextRoundProtected(knockoutState.quarterfinals, 'SF');
     }
     
-    // Advance Semifinals to Final
     if (knockoutState.semifinals.length > 0 && knockoutState.semifinals.every(m => m.played) && !knockoutState.final) {
         const finalists = knockoutState.semifinals.map(m => m.winner).filter(w => w);
         if (finalists.length >= 2) {
@@ -923,7 +1079,6 @@ function autoAdvanceFromLegitResults() {
         }
     }
     
-    // Third place match
     if (knockoutState.semifinals.length > 0 && knockoutState.semifinals.every(m => m.played) && !knockoutState.thirdPlace) {
         const losers = knockoutState.semifinals.map(m => {
             return m.winner === m.home ? m.away : m.home;
@@ -949,7 +1104,7 @@ function advanceToNextRoundProtected(matches, roundName) {
     for (let i = 0; i < winners.length; i += 2) {
         if (winners[i] && winners[i+1]) {
             nextMatches.push({
-                id: `${roundName}_${i/2}`,
+                id: `${roundName}_${Math.floor(i/2) + 1}`,
                 home: winners[i],
                 away: winners[i+1],
                 homeScore: 0,
@@ -963,47 +1118,82 @@ function advanceToNextRoundProtected(matches, roundName) {
     return nextMatches;
 }
 
-// Reset ONLY unplayed/non-legit matches
 function resetOnlyUnplayedMatches() {
-    console.log("Resetting only unplayed/non-legit matches...");
+    console.log("Resetting bracket completely...");
     
-    // Reset Round of 32 (only non-legit ones)
-    knockoutState.round32 = knockoutState.round32.map(match => {
-        if (!match.isLegit) {
-            return {
-                ...match,
+    // COMPLETELY clear all rounds including Round of 32
+    knockoutState.round32 = [];
+    knockoutState.round16 = [];
+    knockoutState.quarterfinals = [];
+    knockoutState.semifinals = [];
+    knockoutState.thirdPlace = null;
+    knockoutState.final = null;
+    knockoutState.winner = null;
+    
+    renderKnockoutBracket();
+    console.log("Bracket reset complete. Round of 32 cleared.");
+}
+
+function createSimulatedBracket() {
+    console.log("Creating simulated bracket from available teams...");
+    
+    // Get all teams or use available teams
+    let availableTeams = [...teamsData];
+    if (availableTeams.length < 32) {
+        console.log("Not enough teams, creating duplicate entries for simulation");
+        while (availableTeams.length < 32) {
+            availableTeams = [...availableTeams, ...teamsData];
+        }
+    }
+    
+    const shuffled = [...availableTeams];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    
+    const round32Matches = [];
+    for (let i = 0; i < 32 && i + 1 < shuffled.length; i += 2) {
+        if (shuffled[i] && shuffled[i + 1]) {
+            round32Matches.push({
+                id: `R32_${round32Matches.length + 1}`,
+                home: shuffled[i],
+                away: shuffled[i + 1],
                 homeScore: 0,
                 awayScore: 0,
                 played: false,
-                winner: null
-            };
+                winner: null,
+                isLegit: false,
+                isSimulated: true
+            });
         }
-        return match;
-    });
-    
-    // Clear all subsequent rounds that aren't legit
-    knockoutState.round16 = knockoutState.round16.filter(m => m.isLegit);
-    knockoutState.quarterfinals = knockoutState.quarterfinals.filter(m => m.isLegit);
-    knockoutState.semifinals = knockoutState.semifinals.filter(m => m.isLegit);
-    
-    if (knockoutState.final && !knockoutState.final.isLegit) {
-        knockoutState.final = null;
-    }
-    if (knockoutState.thirdPlace && !knockoutState.thirdPlace.isLegit) {
-        knockoutState.thirdPlace = null;
     }
     
-    if (!knockoutState.final) knockoutState.winner = null;
-    
-    renderKnockoutBracket();
-    console.log("Unplayed matches reset. Legit results preserved.");
+    knockoutState.round32 = round32Matches.slice(0, 16);
+    knockoutState.round16 = [];
+    knockoutState.quarterfinals = [];
+    knockoutState.semifinals = [];
+    knockoutState.thirdPlace = null;
+    knockoutState.final = null;
+    knockoutState.winner = null;
 }
 
-// Simulate ONLY unplayed/non-legit matches
 function simulateOnlyUnplayedMatches() {
     console.log("Simulating only unplayed/non-legit matches...");
     
-    // Simulate unplayed Round of 32 matches
+    // If no bracket exists yet, create a simulated one first
+    if (knockoutState.round32.length === 0 && teamsData.length > 0) {
+        console.log("No bracket exists. Creating simulated bracket before simulation...");
+        createSimulatedBracket();
+        renderKnockoutBracket();
+    }
+    
+    if (knockoutState.round32.length === 0) {
+        console.log("Cannot simulate - not enough teams data");
+        return;
+    }
+    
+    // Simulate Round of 32
     let hasUnplayedR32 = false;
     knockoutState.round32 = knockoutState.round32.map(m => {
         if (!m.played && !m.isLegit) {
@@ -1013,7 +1203,6 @@ function simulateOnlyUnplayedMatches() {
         return m;
     });
     
-    // If R32 just got played, advance
     if (hasUnplayedR32 && knockoutState.round32.every(m => m.played) && knockoutState.round16.length === 0) {
         knockoutState.round16 = advanceToNextRoundProtected(knockoutState.round32, 'R16');
     }
@@ -1106,7 +1295,7 @@ function simulateOnlyUnplayedMatches() {
     }
     
     renderKnockoutBracket();
-    console.log("Unplayed matches simulated. Legit results unchanged.");
+    console.log("Simulation complete. Legit results from API were preserved.");
 }
 
 function simulateMatchProtected(match) {
@@ -1132,38 +1321,110 @@ function renderKnockoutBracket() {
     const container = document.getElementById('knockout-bracket');
     if (!container) return;
     
+    if (!knockoutState.round32 || knockoutState.round32.length === 0) {
+        container.innerHTML = `
+            <div class="bracket-empty-message">
+                <i class="fa-solid fa-futbol"></i>
+                <h3>Knockout Stage Bracket</h3>
+                <p>Click <strong>"Simulate Random Results"</strong> to generate a tournament bracket</p>
+                <div class="simulation-hint">
+                    <i class="fa-solid fa-dice"></i> Click Simulate para makita ang bracket na may tamang linya
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    const dataSourceBadge = usingRealData ? 
+        '<div class="data-source real-data"><i class="fa-solid fa-database"></i> Live FIFA Data</div>' : 
+        '<div class="data-source simulated-data"><i class="fa-solid fa-dice"></i> Simulation Mode</div>';
+    
     const renderMatch = (match, isFinal = false) => {
         if (!match) return `<div class="bracket-match">TBD</div>`;
+        
         const homeName = match.home?.name_en || 'TBD';
         const awayName = match.away?.name_en || 'TBD';
         const homeFlag = match.home ? getFlag(match.home.id) : '';
         const awayFlag = match.away ? getFlag(match.away.id) : '';
         const score = match.played ? `${match.homeScore} - ${match.awayScore}` : 'VS';
-        const legitBadge = match.isLegit ? '<span style="font-size: 8px; color: #10b981; margin-left: 5px;">✓</span>' : '';
         
-        return `<div class="bracket-match ${isFinal ? 'final-match' : ''}" onclick='showKnockoutMatch(${JSON.stringify(match).replace(/'/g, "&#39;")})'>
-            <div class="match-teams">
-                <div class="match-team"><img src="${homeFlag}" onerror="this.style.display='none'"> <span>${homeName}${match.isLegit && match.winner === match.home ? legitBadge : ''}</span></div>
-                <div class="match-score">${score}</div>
-                <div class="match-team"><img src="${awayFlag}" onerror="this.style.display='none'"> <span>${awayName}${match.isLegit && match.winner === match.away ? legitBadge : ''}</span></div>
+        const homeWinnerClass = (match.played && match.winner === match.home) ? 'winner' : '';
+        const awayWinnerClass = (match.played && match.winner === match.away) ? 'winner' : '';
+        const legitBadge = match.isLegit ? '<div class="legit-badge">Official Result</div>' : '';
+        
+        return `
+            <div class="bracket-match" onclick='showKnockoutMatch(${JSON.stringify(match).replace(/'/g, "&#39;")})'>
+                <div class="match-teams">
+                    <div class="match-team ${homeWinnerClass}">
+                        <img src="${homeFlag}" onerror="this.style.display='none'">
+                        <span>${homeName}</span>
+                        ${match.played ? `<span class="match-score">${match.homeScore}</span>` : ''}
+                    </div>
+                    <div class="match-score">${score}</div>
+                    <div class="match-team ${awayWinnerClass}">
+                        <img src="${awayFlag}" onerror="this.style.display='none'">
+                        <span>${awayName}</span>
+                        ${match.played ? `<span class="match-score">${match.awayScore}</span>` : ''}
+                    </div>
+                </div>
+                ${legitBadge}
             </div>
-            ${match.isLegit ? '<div style="font-size: 8px; color: #10b981; text-align: center; margin-top: 4px;">OFFICIAL RESULT</div>' : ''}
-        </div>`;
+        `;
     };
     
-    let championHtml = '';
-    if (knockoutState.winner) {
-        const isLegitChampion = knockoutState.final?.isLegit;
-        championHtml = ``;
-    }
+    const html = `
+        <div style="text-align: center; margin-bottom: 20px;">
+            ${dataSourceBadge}
+        </div>
+        <div class="bracket-container">
+            <!-- ROUND OF 32 -->
+            <div class="bracket-round round32">
+                <div class="round-title">ROUND OF 32</div>
+                ${knockoutState.round32.map(m => renderMatch(m)).join('')}
+            </div>
+            
+            <!-- ROUND OF 16 -->
+            <div class="bracket-round round16">
+                <div class="round-title">ROUND OF 16</div>
+                ${knockoutState.round16.length ? 
+                    knockoutState.round16.map(m => renderMatch(m)).join('') : 
+                    '<div class="bracket-match">-</div>'
+                }
+            </div>
+            
+            <!-- QUARTERFINALS -->
+            <div class="bracket-round quarters">
+                <div class="round-title">QUARTERFINALS</div>
+                ${knockoutState.quarterfinals.length ? 
+                    knockoutState.quarterfinals.map(m => renderMatch(m)).join('') : 
+                    '<div class="bracket-match">-</div>'
+                }
+            </div>
+            
+            <!-- SEMIFINALS -->
+            <div class="bracket-round semis">
+                <div class="round-title">SEMIFINALS</div>
+                ${knockoutState.semifinals.length ? 
+                    knockoutState.semifinals.map(m => renderMatch(m)).join('') : 
+                    '<div class="bracket-match">-</div>'
+                }
+            </div>
+            
+            <!-- FINAL & THIRD PLACE -->
+            <div class="bracket-round final-round">
+                <div class="round-title">FINAL</div>
+                ${knockoutState.final ? renderMatch(knockoutState.final, true) : '<div class="bracket-match">-</div>'}
+                ${knockoutState.thirdPlace ? `
+                    <div class="third-place-container">
+                        <div class="round-title">THIRD PLACE</div>
+                        ${renderMatch(knockoutState.thirdPlace)}
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+        ${knockoutState.winner ? `` : ''}
+    `;
     
-    const html = `<div class="bracket-container">
-        <div class="bracket-round"><div class="round-title">ROUND OF 32</div>${knockoutState.round32.map(m => renderMatch(m)).join('')}</div>
-        <div class="bracket-round"><div class="round-title">ROUND OF 16</div>${knockoutState.round16.length ? knockoutState.round16.map(m => renderMatch(m)).join('') : '<div class="bracket-match">-</div>'}</div>
-        <div class="bracket-round"><div class="round-title">QUARTERFINALS</div>${knockoutState.quarterfinals.length ? knockoutState.quarterfinals.map(m => renderMatch(m)).join('') : '<div class="bracket-match">-</div>'}</div>
-        <div class="bracket-round"><div class="round-title">SEMIFINALS</div>${knockoutState.semifinals.length ? knockoutState.semifinals.map(m => renderMatch(m)).join('') : '<div class="bracket-match">-</div>'}</div>
-        <div class="bracket-round"><div class="round-title">FINAL</div>${knockoutState.final ? renderMatch(knockoutState.final, true) : '<div class="bracket-match">-</div>'}</div>
-    </div>${championHtml}`;
     container.innerHTML = html;
 }
 
@@ -1181,7 +1442,7 @@ window.showKnockoutMatch = function(matchData) {
         <img src="${away ? getFlag(away.id) : ''}" width="80" style="margin:10px">
         <h3 style="margin-top:20px">${home?.name_en || 'TBD'} vs ${away?.name_en || 'TBD'}</h3>
         <p style="color:#c8102e; margin-top:10px">Knockout Stage Match</p>
-        ${isLegit ? '<p style="color:#10b981; margin-top:5px; font-size:12px;">✓ OFFICIAL FIFA RESULT ✓</p>' : '<p style="color:#f59e0b; margin-top:5px; font-size:12px;">⚠ SIMULATED RESULT ⚠</p>'}
+        ${isLegit ? '<p style="color:#10b981; margin-top:5px; font-size:12px;">OFFICIAL FIFA RESULT</p>' : '<p style="color:#f59e0b; margin-top:5px; font-size:12px;">SIMULATED RESULT</p>'}
     </div>`;
     modal.style.display = 'flex';
 };
@@ -1215,18 +1476,13 @@ function initMobileSidebar() {
         link.addEventListener('click', (e) => {
             const targetId = link.getAttribute('href');
             
-            // Check if it's an external URL or hash link
             if (targetId && targetId !== '#') {
-                // If it's an external URL (starts with http:// or https://)
                 if (targetId.startsWith('http://') || targetId.startsWith('https://')) {
-                    // Close sidebar first
                     closeSidebar();
-                    // Open in new tab
-                    window.location.href = targetId;  // Opens in same tab
-                    return; // Exit early
+                    window.location.href = targetId;
+                    return;
                 }
                 
-                // Otherwise, treat as internal hash link
                 e.preventDefault();
                 closeSidebar();
                 const targetElement = document.querySelector(targetId);
@@ -1237,6 +1493,85 @@ function initMobileSidebar() {
         });
     });
 }
+
+// Add CSS for empty state and data source badges
+const style = document.createElement('style');
+style.textContent = `
+    .bracket-empty-message {
+        text-align: center;
+        padding: 60px 40px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 24px;
+        border: 1px dashed rgba(255, 255, 255, 0.15);
+    }
+    .bracket-empty-message i {
+        font-size: 48px;
+        color: #c8102e;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+    .bracket-empty-message h3 {
+        font-size: 24px;
+        margin-bottom: 12px;
+        color: #c8102e;
+    }
+    .bracket-empty-message p {
+        color: #9ca3af;
+        margin-bottom: 8px;
+    }
+    .bracket-empty-message .small-text {
+        font-size: 12px;
+        opacity: 0.7;
+    }
+    .simulation-hint {
+        margin-top: 20px;
+        padding: 10px;
+        background: rgba(200, 16, 46, 0.1);
+        border-radius: 12px;
+        font-size: 12px;
+        color: #f59e0b;
+    }
+    .data-source {
+        text-align: center;
+        padding: 8px 16px;
+        margin-bottom: 20px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+        width: auto;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .real-data {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .simulated-data {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .group-winner {
+        background: linear-gradient(90deg, rgba(46, 204, 113, 0.15), transparent);
+        border-left: 3px solid #2ecc71;
+    }
+    .group-runnerup {
+        background: linear-gradient(90deg, rgba(52, 152, 219, 0.1), transparent);
+        border-left: 3px solid #3498db;
+    }
+    .champion-banner {
+        text-align: center;
+        margin-top: 30px;
+        padding: 20px;
+        background: linear-gradient(135deg, #c8102e, #8b0000);
+        border-radius: 12px;
+        font-size: 24px;
+        font-weight: bold;
+    }
+`;
+document.head.appendChild(style);
 
 document.addEventListener('DOMContentLoaded', function() {
     const modal = document.getElementById("matchModal");
