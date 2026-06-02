@@ -1323,14 +1323,6 @@ function renderKnockoutBracket() {
     
     if (!knockoutState.round32 || knockoutState.round32.length === 0) {
         container.innerHTML = `
-            <div class="bracket-empty-message">
-                <i class="fa-solid fa-futbol"></i>
-                <h3>Knockout Stage Bracket</h3>
-                <p>Click <strong>"Simulate Random Results"</strong> to generate a tournament bracket</p>
-                <div class="simulation-hint">
-                    <i class="fa-solid fa-dice"></i> Click Simulate para makita ang bracket na may tamang linya
-                </div>
-            </div>
         `;
         return;
     }
@@ -1339,38 +1331,37 @@ function renderKnockoutBracket() {
         '<div class="data-source real-data"><i class="fa-solid fa-database"></i> Live FIFA Data</div>' : 
         '<div class="data-source simulated-data"><i class="fa-solid fa-dice"></i> Simulation Mode</div>';
     
-    const renderMatch = (match, isFinal = false) => {
-        if (!match) return `<div class="bracket-match">TBD</div>`;
-        
-        const homeName = match.home?.name_en || 'TBD';
-        const awayName = match.away?.name_en || 'TBD';
-        const homeFlag = match.home ? getFlag(match.home.id) : '';
-        const awayFlag = match.away ? getFlag(match.away.id) : '';
-        const score = match.played ? `${match.homeScore} - ${match.awayScore}` : 'VS';
-        
-        const homeWinnerClass = (match.played && match.winner === match.home) ? 'winner' : '';
-        const awayWinnerClass = (match.played && match.winner === match.away) ? 'winner' : '';
-        const legitBadge = match.isLegit ? '<div class="legit-badge">Official Result</div>' : '';
-        
-        return `
-            <div class="bracket-match" onclick='showKnockoutMatch(${JSON.stringify(match).replace(/'/g, "&#39;")})'>
-                <div class="match-teams">
-                    <div class="match-team ${homeWinnerClass}">
-                        <img src="${homeFlag}" onerror="this.style.display='none'">
-                        <span>${homeName}</span>
-                        ${match.played ? `<span class="match-score">${match.homeScore}</span>` : ''}
-                    </div>
-                    <div class="match-score">${score}</div>
-                    <div class="match-team ${awayWinnerClass}">
-                        <img src="${awayFlag}" onerror="this.style.display='none'">
-                        <span>${awayName}</span>
-                        ${match.played ? `<span class="match-score">${match.awayScore}</span>` : ''}
-                    </div>
+ const renderMatch = (match, isFinal = false) => {
+    if (!match) return `<div class="bracket-match">TBD</div>`;
+    
+    // Use fifa_code instead of name_en
+    const homeName = match.home?.fifa_code || match.home?.name_en?.substring(0, 3).toUpperCase() || 'TBD';
+    const awayName = match.away?.fifa_code || match.away?.name_en?.substring(0, 3).toUpperCase() || 'TBD';
+    const homeFlag = match.home ? getFlag(match.home.id) : '';
+    const awayFlag = match.away ? getFlag(match.away.id) : '';
+    const scoreText = match.played ? `${match.homeScore}:${match.awayScore}` : '0:0';
+    
+    const homeWinnerClass = (match.played && match.winner === match.home) ? 'winner' : '';
+    const awayWinnerClass = (match.played && match.winner === match.away) ? 'winner' : '';
+    const legitBadge = match.isLegit ? '<div class="legit-badge">Official Result</div>' : '';
+    
+    return `
+        <div class="bracket-match" onclick='showKnockoutMatch(${JSON.stringify(match).replace(/'/g, "&#39;")})'>
+            <div class="match-teams">
+                <div class="match-team ${homeWinnerClass}">
+                    <img src="${homeFlag}" onerror="this.style.display='none'">
+                    <span>${homeName}</span>
                 </div>
-                ${legitBadge}
+                <div class="match-score">${scoreText}</div>
+                <div class="match-team ${awayWinnerClass}">
+                    <img src="${awayFlag}" onerror="this.style.display='none'">
+                    <span>${awayName}</span>
+                </div>
             </div>
-        `;
-    };
+            ${legitBadge}
+        </div>
+    `;
+};
     
     const html = `
         <div style="text-align: center; margin-bottom: 20px;">
