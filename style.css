@@ -958,7 +958,7 @@ html {
     }
 }
 
-/* KNOCKOUT BRACKET STYLES */
+/* KNOCKOUT BRACKET STYLES - PROPER FIFA STYLE ALIGNMENT */
 .knockout-section {
     background: var(--knockout-bg);
 }
@@ -968,6 +968,7 @@ html {
     gap: 15px;
     justify-content: center;
     margin-top: 20px;
+    margin-bottom: 30px;
 }
 
 .simulate-btn, .reset-btn {
@@ -1004,95 +1005,341 @@ html {
 
 .knockout-bracket {
     overflow-x: auto;
-    padding: 20px 0;
+    padding: 40px 20px;
 }
 
+/* Bracket container */
 .bracket-container {
     display: flex;
     justify-content: center;
-    gap: 20px;
+    align-items: center;
     min-width: 1300px;
+    gap: 30px;
+    position: relative;
 }
 
+/* Individual rounds */
 .bracket-round {
     display: flex;
     flex-direction: column;
-    justify-content: space-around;
-    gap: 15px;
-    min-width: 220px;
+    min-width: 240px;
+    position: relative;
 }
 
+/* Round titles */
 .round-title {
     text-align: center;
     font-weight: 700;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
     color: var(--accent);
     letter-spacing: 2px;
     font-size: 13px;
     text-transform: uppercase;
 }
 
+/* Match cards */
 .bracket-match {
     background: var(--match-bg);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 12px;
+    padding: 12px 15px;
     cursor: pointer;
     transition: all 0.2s;
+    position: relative;
 }
 
 .bracket-match:hover {
     border-color: var(--accent);
     transform: translateX(3px);
+    background: rgba(200, 16, 46, 0.1);
 }
 
+/* Fixed vertical spacing per round - para nakatapat ang mananalo */
+.round32 .bracket-match {
+    margin-bottom: 20px;
+}
+
+.round16 .bracket-match {
+    margin: 45px 0;
+}
+
+.quarters .bracket-match {
+    margin: 110px 0;
+}
+
+.semis .bracket-match {
+    margin: 250px 0;
+}
+
+.final-round {
+    justify-content: center;
+}
+
+.final-round .bracket-match {
+    margin: 0;
+}
+
+/* Third place match */
+.third-place-container {
+    margin-top: 50px;
+    padding-top: 30px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.2);
+}
+
+.third-place-container .round-title {
+    font-size: 11px;
+    margin-bottom: 15px;
+    color: var(--muted);
+}
+
+/* Connector lines - horizontal lines from matches */
+.round32 .bracket-match::after,
+.round16 .bracket-match::after,
+.quarters .bracket-match::after,
+.semis .bracket-match::after {
+    content: "";
+    position: absolute;
+    right: -30px;
+    top: 50%;
+    width: 30px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%);
+    z-index: 1;
+}
+
+/* Vertical connector lines */
+.round32 .bracket-match:first-child::before {
+    content: "";
+    position: absolute;
+    right: -30px;
+    top: 50%;
+    width: 2px;
+    height: calc(100% + 20px);
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-50%);
+    z-index: 0;
+}
+
+.round32 .bracket-match:last-child::before {
+    display: none;
+}
+
+/* Special connector for Round 16 to Quarters */
+.round16 .bracket-match::before {
+    content: "";
+    position: absolute;
+    right: -30px;
+    top: 50%;
+    width: 2px;
+    height: calc(100% + 65px);
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-50%);
+    z-index: 0;
+}
+
+/* Quarters to Semis connector */
+.quarters .bracket-match::before {
+    content: "";
+    position: absolute;
+    right: -30px;
+    top: 50%;
+    width: 2px;
+    height: calc(100% + 140px);
+    background: rgba(255, 255, 255, 0.15);
+    transform: translateY(-50%);
+    z-index: 0;
+}
+
+/* Hide last match connectors */
+.round16 .bracket-match:last-child::before,
+.quarters .bracket-match:last-child::before {
+    display: none;
+}
+
+/* Winner highlight */
+.bracket-match .match-team.winner {
+    font-weight: bold;
+    color: #2ecc71;
+}
+
+.match-team.winner span {
+    color: #2ecc71;
+}
+
+/* Final match styling */
+.final-round .bracket-match {
+    background: linear-gradient(135deg, rgba(200, 16, 46, 0.25), rgba(0, 0, 0, 0.6));
+    border: 2px solid var(--accent);
+    min-width: 220px;
+}
+
+/* Match content */
 .match-teams {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .match-team {
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 11px;
+    gap: 8px;
+    font-size: 12px;
     font-weight: 500;
 }
 
 .match-team img {
-    width: 24px;
-    height: 16px;
+    width: 28px;
+    height: 18px;
     object-fit: cover;
     border-radius: 3px;
 }
 
+.match-team span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+}
+
 .match-score {
     font-weight: 800;
-    font-size: 12px;
+    font-size: 13px;
+    color: var(--accent);
+    white-space: nowrap;
+    padding: 0 8px;
+}
+
+/* Champion banner */
+.champion-banner {
+    margin-top: 40px;
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, rgba(200, 16, 46, 0.3), rgba(0, 0, 0, 0.5));
+    border-radius: 60px;
+    border: 1px solid rgba(200, 16, 46, 0.5);
+    font-size: 24px;
+    font-weight: 800;
+}
+
+/* Empty state */
+.bracket-empty-message {
+    text-align: center;
+    padding: 60px 40px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 24px;
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
+.bracket-empty-message i {
+    font-size: 48px;
+    color: var(--accent);
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.bracket-empty-message h3 {
+    font-size: 24px;
+    margin-bottom: 12px;
     color: var(--accent);
 }
 
-.final-match {
-    background: linear-gradient(135deg, rgba(200,16,46,0.2), rgba(0,0,0,0.6));
-    border: 1px solid var(--accent);
+.bracket-empty-message p {
+    color: var(--muted);
+    margin-bottom: 8px;
 }
 
-.champion-banner {
-    margin-top: 20px;
+/* Data source badges */
+.data-source {
     text-align: center;
-    padding: 15px;
-    background: linear-gradient(135deg, rgba(200,16,46,0.3), rgba(0,0,0,0.5));
-    border-radius: 60px;
-    border: 1px solid rgba(200,16,46,0.5);
+    padding: 8px 20px;
+    margin-bottom: 20px;
+    border-radius: 30px;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-block;
+    width: auto;
+    margin-left: auto;
+    margin-right: auto;
 }
 
-.champion-banner span {
-    font-size: 18px;
-    font-weight: 800;
-    color: gold;
+.real-data {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.simulated-data {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.legit-badge {
+    font-size: 9px;
+    color: #10b981;
+    text-align: center;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .bracket-container {
+        min-width: 1100px;
+        gap: 15px;
+    }
+    
+    .bracket-round {
+        min-width: 180px;
+    }
+    
+    .match-team {
+        font-size: 9px;
+        gap: 4px;
+    }
+    
+    .match-team img {
+        width: 20px;
+        height: 14px;
+    }
+    
+    .match-team span {
+        max-width: 70px;
+    }
+    
+    .match-score {
+        font-size: 10px;
+        padding: 0 4px;
+    }
+    
+    .bracket-match {
+        padding: 8px 10px;
+    }
+    
+    .round16 .bracket-match {
+        margin: 35px 0;
+    }
+    
+    .quarters .bracket-match {
+        margin: 85px 0;
+    }
+    
+    .semis .bracket-match {
+        margin: 190px 0;
+    }
+    
+    .round32 .bracket-match::after,
+    .round16 .bracket-match::after,
+    .quarters .bracket-match::after,
+    .semis .bracket-match::after {
+        right: -15px;
+        width: 15px;
+    }
 }
 
 /* STADIUMS */
@@ -1207,4 +1454,35 @@ html {
     .logo span {
         font-size: 13px;
     }
+}
+
+.bracket-empty-message {
+    text-align: center;
+    padding: 60px 40px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 24px;
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
+.bracket-empty-message i {
+    font-size: 48px;
+    color: var(--accent);
+    margin-bottom: 20px;
+    opacity: 0.5;
+}
+
+.bracket-empty-message h3 {
+    font-size: 24px;
+    margin-bottom: 12px;
+    color: var(--accent);
+}
+
+.bracket-empty-message p {
+    color: var(--muted);
+    margin-bottom: 8px;
+}
+
+.bracket-empty-message .small-text {
+    font-size: 12px;
+    opacity: 0.7;
 }
